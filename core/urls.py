@@ -4,7 +4,8 @@ from .views import (
     register,
     protected_view,
     upload_media,
-    create_purchase
+    create_purchase,
+    add_product
 )
 from rest_framework_simplejwt.views import TokenRefreshView
 
@@ -15,4 +16,5 @@ urlpatterns = [
     path("protected/", protected_view, name="protected_view"),
     path("media/upload/", upload_media, name="upload_media"),
     path("purchase/", create_purchase, name="create_purchase"),
+    path("add-product/", add_product, name="add_product"),
 ]

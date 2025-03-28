@@ -4,30 +4,28 @@ from rest_framework import status, permissions
 from rest_framework.decorators import api_view, permission_classes, parser_classes, authentication_classes
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.parsers import MultiPartParser, FormParser
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, authenticate,  authenticate, logout
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import CustomTokenObtainPairSerializer, PurchaseSerializer, MediaUploadSerializer
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from cloudinary.uploader import upload
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .serializers import CustomTokenObtainPairSerializer
 from .permissions import IsMerchant
-from rest_framework.permissions import IsAuthenticated
+from .serializers import MediaFileSerializer
 
 User = get_user_model()
-
-# ✅ Custom Login View
-
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 
 
-# ✅ Register New User
 @api_view(["POST"])
+@permission_classes([AllowAny])
 def register(request):
     username = request.data.get("username")
     password = request.data.get("password")
-    role = request.data.get("role", "client")
+    role = request.data.get("role", "client")  # Default role is client
 
     if not username or not password:
         return Response({"error": "Username and password are required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -35,12 +33,9 @@ def register(request):
     if User.objects.filter(username=username).exists():
         return Response({"error": "User already exists"}, status=status.HTTP_400_BAD_REQUEST)
 
-    user = User.objects.create_user(username=username, password=password)
-
-    if hasattr(user, "role"):
-        user.role = role
-        user.save()
-
+    user = User.objects.create_user(username=username, password=password, role=role)
+    
+    # Generate JWT Tokens
     refresh = RefreshToken.for_user(user)
 
     return Response({
@@ -49,9 +44,38 @@ def register(request):
         "user": {
             "id": user.id,
             "username": user.username,
-            "role": getattr(user, "role", "client"),
+            "role": user.role,
         },
     }, status=status.HTTP_201_CREATED)
+
+
+# ✅ Login User and Get JWT Token
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def login(request):
+    username = request.data.get("username")
+    password = request.data.get("password")
+
+    if not username or not password:
+        return Response({"error": "Username and password are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    user = authenticate(username=username, password=password)
+
+    if user is None:
+        return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+
+    # Generate JWT Tokens
+    refresh = RefreshToken.for_user(user)
+
+    return Response({
+        "access": str(refresh.access_token),
+        "refresh": str(refresh),
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "role": user.role,
+        },
+    }, status=status.HTTP_200_OK)
 
 
 # ✅ Protected Route (Example)
@@ -90,6 +114,16 @@ def create_purchase(request):
 
 @api_view(['POST'])
 @authentication_classes([JWTAuthentication])
-@permission_classes([IsAuthenticated, IsMerchant])
+@permission_classes([IsMerchant])
 def add_product(request):
-    return Response({"message": "Product added successfully!"})
+    """
+    Allows a merchant (creator) to add a media product (image or audio).
+    """
+    serializer = MediaFileSerializer(data=request.data, context={'request': request})
+    
+    if serializer.is_valid():
+        serializer.save(creator=request.user)  # Assign logged-in user as the creator
+        return Response({"message": "Product added successfully!", "data": serializer.data}, status=status.HTTP_201_CREATED)
+
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+

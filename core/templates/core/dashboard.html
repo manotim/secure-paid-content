@@ -1,0 +1,12 @@
+<!-- core/templates/core/dashboard.html -->
+{% extends "core/base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="text-center">
+    <h2>Welcome, {{ user.username }}!</h2>
+    <p>Manage your products and account here.</p>
+    <a href="{% url 'add_product' %}" class="btn btn-success">Add a Product</a>
+</div>
+{% endblock %}
